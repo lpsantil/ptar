@@ -1,8 +1,8 @@
-Title:		Plain Text Archive (ptar) Format
-Author:		Jordan Vaughan
-Date:		2013-09-24
-Encoding:	utf-8
-Format:		Markdown with MultiMarkdown metadata extensions
+Title:		Plain Text Archive (ptar) Format  
+Author:		Jordan Vaughan  
+Date:		2013-09-24  
+Encoding:	utf-8  
+Format:		Markdown with MultiMarkdown metadata extensions  
 Copyright:	Written in 2013 by Jordan Vaughan.  To the extent possible under law, Jordan Vaughan has waived all copyright and related or neighboring rights to this publication.  You can copy, modify, distribute and perform this publication, even for commercial purposes, all without asking permission.  Please see <http://creativecommons.org/publicdomain/zero/1.0/> for more information.
 
 # Introduction
