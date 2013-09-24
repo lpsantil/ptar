@@ -34,7 +34,7 @@ After installation, invoke `ptar` with the `-help` option for a detailed help me
 	% ptar -help
 
 # Archive Format
-See [FORMAT](FORMAT) for a detailed description of the `ptar` format and examples.  Consider including this file in your ptars so that people examining them will have a guide to understanding them (thus increasing your ptars’ long-term archival value).
+See [FORMAT.md](FORMAT.md) for a detailed description of the `ptar` format and examples.  Consider including this file in your ptars so that people examining them will have a guide to understanding them (thus increasing your ptars’ long-term archival value).
 
 # `ptar` vs. `tar(1)`
 ## Features
