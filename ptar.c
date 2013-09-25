@@ -26,7 +26,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#define	WRITE_BLOCKSIZE	4096
+#ifndef	WRITE_BLOCKSIZE
+#define	WRITE_BLOCKSIZE	32768
+#endif	/* WRITE_BLOCKSIZE */
 
 static char linkpath[8192], verbose;
 static long openmax;
@@ -37,6 +39,11 @@ enum { UNKNOWN, REGULARFILE, DIRECTORY, SYMLINK, CHARDEVICE, BLOCKDEVICE, FIFO, 
 /* stdout identifying info (from fstat(2)) */
 static dev_t stdoutdev;
 static ino_t stdoutino;
+
+/* fseek(3) optimization (for 't' command) */
+int skip_file_data_fread(size_t lineno);
+int skip_file_data_fseek(size_t lineno);
+int (*skip_file_data)(size_t) = skip_file_data_fseek;
 
 /* file entry metadata */
 static char *fpath;
@@ -193,8 +200,9 @@ int add_file(const char *fname, const struct stat *sb, int typeflag, struct FTW 
 	char buffer[WRITE_BLOCKSIZE];
 	size_t numread;
 
-	/* skip the file if it's the same as stdout (avoids infinite loops) */
-	if (sb->st_dev == stdoutdev && sb->st_ino == stdoutino) {
+	/* skip the file if it's the same as stdout (avoids infinite loops) or
+	   the file is the current directory (avoids an unnecessary entry) */
+	if ((sb->st_dev == stdoutdev && sb->st_ino == stdoutino) || strcmp(fname, ".") == 0) {
 		return 0;
 	}
 
@@ -277,10 +285,8 @@ int archive_file(const char *fname) {
 		return 1;
 	} else if (S_ISDIR(sb.st_mode)) {
 		return nftw(fname, add_file, open_max(), FTW_PHYS);
-	} else {
-		return add_file(fname, &sb, 0, NULL);
 	}
-	return 0;
+	return add_file(fname, &sb, 0, NULL);
 }
 
 int handle_metadata(size_t lineno, char *key, char *value) {
@@ -610,28 +616,51 @@ int scan_archive(int (*onentry)(size_t)) {
 	return 0;
 }
 
-int listfiles(size_t lineno) {
+int skip_file_data_fread(size_t lineno) {
 	char buffer[WRITE_BLOCKSIZE];
-	size_t numread;
-	size_t numleft;
+	size_t numread, numleft;
 
+	for (numleft = fsize; numleft > 0; ) {
+		numread = fread(buffer, 1, numleft < sizeof (buffer) ? numleft : sizeof (buffer), stdin);
+		numleft -= numread;
+		if (ferror(stdin)) {
+			(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
+			return 1;
+		} else if (feof(stdin) && numleft > 0) {
+			(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents (bad file size?)\n", lineno);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int skip_file_data_fseek(size_t lineno) {
+	int ret;
+	if (fsize <= (size_t)LONG_MAX) {
+		if ((ret = fseek(stdin, (long)fsize, SEEK_CUR)) != 0) {
+			if (errno == EBADF || errno == ESPIPE) {
+				/* fall back on read(2) if fseek(3) fails on stdin */
+				skip_file_data = skip_file_data_fread;
+				return skip_file_data_fread(lineno);
+			} else {
+				(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
+				return 1;
+			}
+		}
+		return ret;
+	} else {
+		return skip_file_data_fread(lineno);
+	}
+}
+
+int listfiles(size_t lineno) {
 	if (!fpath) {
 		(void) fprintf(stderr, "stdin:%zu: found an entry without a path\n", lineno);
 		return 1;
 	}
 	printline(fpath);
 	if (ftype == REGULARFILE) {
-		for (numleft = fsize; numleft > 0; ) {
-			numread = fread(buffer, 1, numleft < sizeof (buffer) ? numleft : sizeof (buffer), stdin);
-			numleft -= numread;
-			if (ferror(stdin)) {
-				(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
-				return 1;
-			} else if (feof(stdin) && numleft > 0) {
-				(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents (bad file size?)\n", lineno);
-				return 1;
-			}
-		}
+		return skip_file_data(lineno);
 	}
 	return 0;
 }
@@ -641,6 +670,7 @@ int extract(size_t lineno) {
 	FILE *fp;
 	size_t numleft;
 	size_t numread;
+	struct stat sb;
 	struct timespec times[2];
 	int result;
 
@@ -661,13 +691,17 @@ int extract(size_t lineno) {
 	}
 	switch (ftype) {
 	case REGULARFILE:
+		result = 0;
 		if ((fp = fopen(fpath, "w")) == NULL) {
-			perror(fpath);
-			return 1;
+			result = 1;
 		}
 		break;
 	case DIRECTORY:
-		result = mkdir(fpath, fmode);
+		if ((result = mkdir(fpath, fmode)) != 0 && errno == EEXIST) {
+			if (lstat(fpath, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+				result = chmod(fpath, fmode);
+			}
+		}
 		break;
 	case SYMLINK:
 		result = symlink(flinktarget, fpath);
@@ -687,6 +721,10 @@ int extract(size_t lineno) {
 	default:
 		abort();
 		break;
+	}
+	if (result) {
+		perror(fpath);
+		return 1;
 	}
 	if (fp) {
 		for (numleft = fsize; numleft; ) {
@@ -749,14 +787,13 @@ void help() {
 
 "     NOTE: Options must precede command letters.\n\n"
 
-"     -h                  synonym for -help\n"
-"     -help               Show this help message and exit.\n"
-"     -paths-from-stdin   Read PATHs to be archived from standard input, one\n"
+"     -h, --help          Show this help message and exit.\n"
+"     --paths-from-stdin  Read PATHs to be archived from standard input, one\n"
 "                         PATH per line, after archiving PATHs specified on\n"
 "                         the command line.  (This only makes sense for the\n"
 "                         'c' command.)\n"
-"     -unbuffered         Disable standard output buffering.\n"
-"     -verbose            Verbose output: List PATHs added or extracted on\n"
+"     -u, --unbuffered    Disable standard output buffering.\n"
+"     -v, --verbose       Verbose output: List PATHs added or extracted on\n"
 "                         standard error.\n\n");
 }
 
@@ -771,7 +808,7 @@ int main(int argc, char **argv) {
 
 	pathsfromstdin = 0;
 	for (n = 1; n < argc; n++) {
-		if (strcmp(argv[n], "-help") == 0 || strcmp(argv[n], "-h") == 0) {
+		if (strcmp(argv[n], "-h") == 0 || strcmp(argv[n], "--help") == 0) {
 			help();
 			exit(EXIT_SUCCESS);
 		}
@@ -781,14 +818,14 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 	for (n = 1; n < argc; n++) {
-		if (strcmp(argv[n], "-paths-from-stdin") == 0) {
+		if (strcmp(argv[n], "--paths-from-stdin") == 0) {
 			pathsfromstdin = 1;
-		} else if (strcmp(argv[n], "-unbuffered") == 0) {
+		} else if (strcmp(argv[n], "-u") == 0 || strcmp(argv[n], "--unbuffered") == 0) {
 			if (setvbuf(stdout, NULL, _IONBF, 0) != 0) {
 				(void) fprintf(stderr, "error: unable to disable standard output buffering: %s\n", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
-		} else if (strcmp(argv[n], "-verbose") == 0) {
+		} else if (strcmp(argv[n], "-v") == 0 || strcmp(argv[n], "--verbose") == 0) {
 			verbose = 1;
 		} else if (n == argc) {
 			(void) fprintf(stderr, "error: no command given (specify -h for help)\n");

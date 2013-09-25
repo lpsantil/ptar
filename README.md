@@ -12,15 +12,27 @@ This is a tool that creates, examines, and extracts files from plain text archiv
 I wanted to try to make a simple yet extensible file archive format using only plain text.  Thanks to its ubiquity and entrenchment in computing, plain text files are the best long-term digital archival format.  The most widely used UNIX archive format is `tar(1)`’s, so I tried to make something equivalent to `tar(1)` but with plain text metadata.  Plain text archives (ptars) offer nearly equivalent functionality (and sometimes space savings) but with the promise of better longevity.
 
 ## “Isn’t `tar(1)` good enough?”
-
 Yes, it is.  But using `ptar` will increase your data’s longevity (archival quality) because the metadata is easier to examine and interpret.
 
 ## “Why did you reinvent the wheel?”
-
 Because I wanted to.  Seriously, though, `ptar` adds value: metadata that can be easily grokked in a plain text editor.
 
 # Installation
-Clone this git repository or download the source.  Open a terminal and navigate to the directory containing the source.  Execute the following command:
+Get the source.  Open a terminal and navigate to the directory containing the source.  Run `make` to build `ptar`, like so:
+
+	% make
+
+`ptar` will be built in the directory containing the source code.  To install it, run
+
+	% make install
+
+`ptar` will be installed in `/usr/bin` and its owner and group will be `root` by default.  To change the installation directory, set the `BINDIR` make variable.  You can change `ptar`’s owner and group via `INSTALL_USER` and `INSTALL_GROUP` make variables.  For example,
+
+	% make BINDIR=$HOME/bin INSTALL_USER=yourstruly INSTALL_GROUP=yourstruly install
+
+installs `ptar` in `$HOME/bin`.  Its owner and group will both be `yourstruly`.
+
+Alternatively, there’s a simpler installation script, `install.sh`, for systems lacking `make(1)`.  To run it, execute this:
 
 	% ./install.sh DESTDIR
 
@@ -28,10 +40,12 @@ where `DESTDIR` is the directory where the programs will be installed.  You need
 
 	% CC=gcc ./install.sh DESTDIR
 
+You’ll have to manually set the `ptar` installed binary’s username and group if you use `install.sh`.
+
 # Usage
 After installation, invoke `ptar` with the `-help` option for a detailed help message, like so:
 
-	% ptar -help
+	% ptar --help
 
 # Archive Format
 See [FORMAT.md](FORMAT.md) for a detailed description of the `ptar` format and examples.  Consider including this file in your ptars so that people examining them will have a guide to understanding them (thus increasing your ptars’ long-term archival value).
@@ -59,3 +73,4 @@ Copyright?  Hah!  Here’s my “copyright”:
 > You should have received a copy of the CC0 Public Domain Dedication along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 
 See [COPYING](COPYING) for the CC0 Public Domain Dedication text.
+
