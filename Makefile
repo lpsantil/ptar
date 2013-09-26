@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 # Plain Text Archive Tool Installation Script
-# Written in 2013 by Jordan Vaughan
+# Written in 2013.  See AUTHORS for a list of authors.
 #
 # To the extent possible under law, the author(s) have dedicated all copyright
 # and related and neighboring rights to this software to the public domain
@@ -44,7 +44,7 @@ DISTARCHIVE = $(BINFILE).ptar
 SRC = ptar.c
 OBJ = $(SRC:.c=.o)
 INSTALL_PROGRAM = $(INSTALL) -p -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 755 -s
-DISTCONTENTS = COPYING README.md FORMAT.md $(BINFILE)
+DISTCONTENTS = COPYING AUTHORS README.md FORMAT.md $(BINFILE)
 
 
 # TARGETS

@@ -1,6 +1,6 @@
 /*
  * Read and Write Plain Text File Archives
- * Written in 2013 by Jordan Vaughan
+ * Written in 2013.  See AUTHORS for a list of authors.
  *
  * To the extent possible under law, the author(s) have dedicated all copyright
  * and related and neighboring rights to this software to the public domain

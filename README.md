@@ -66,7 +66,7 @@ Although ptars require additional space per piece of metadata to store key names
 # Copyright Notice
 Copyright?  Hah!  Here’s my “copyright”:
 
-> Jordan Vaughan wrote this program in 2013.
+> This program was written in 2013.  See [AUTHORS](AUTHORS) for a list of authors.
 >
 > To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights to this software to the public domain worldwide. This software is distributed without any warranty.
 >
