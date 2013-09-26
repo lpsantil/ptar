@@ -16,7 +16,7 @@
 # Feel free to set these at the command line.
 
 # the name of the generated binary
-BINFILE = ptar
+BINFILE ?= ptar
 
 # compilation flags
 CFLAGS ?= -D_XOPEN_SOURCE=700 -D_BSD_SOURCE -O2 -g -Wall -Werror
@@ -36,7 +36,7 @@ PREFIXDIR ?= /usr
 BINDIR ?= $(PREFIXDIR)/bin
 
 # the name of the ptar archive that the 'dist' target builds
-DISTARCHIVE = $(BINFILE).ptar
+DISTARCHIVE ?= $(BINFILE).ptar
 
 
 # INTERNAL VARIABLES
