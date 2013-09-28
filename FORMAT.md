@@ -74,3 +74,6 @@ If a file is a regular file (`Type` is `Regular File`), then the entry’s metad
 	---
 	Tue Sep 24 18:30:48 JST 2013
 	---
+
+# Filename Extension
+Like historical `tar(1)` archives, plain text archives may have any filename extension: Programs that process plain text archives should not expect or require a particular filename extension.  However, `.ptar` is a reasonable and recognizable standard extension.  Unless there is a compelling reason to do otherwise, new plain text archives should be named with the `.ptar` filename extension.
