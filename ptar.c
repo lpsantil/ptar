@@ -787,17 +787,17 @@ void help(void) {
 
 "     NOTE: Options must precede command letters.\n\n"
 
-"     -h, --help          Show this help message and exit.\n"
-"     --paths-from-stdin  Read PATHs to be archived from standard input, one\n"
-"                         PATH per line, after archiving PATHs specified on\n"
-"                         the command line.  (This only makes sense for the\n"
-"                         'c' command.)\n"
-"     -n, --no-header     Don't write global header.  (This only makes sense\n"
-"                         for adding files to already existing archive using\n"
-"                         shell redirection.)\n"
-"     -u, --unbuffered    Disable standard output buffering.\n"
-"     -v, --verbose       Verbose output: List PATHs added or extracted on\n"
-"                         standard error.\n\n");
+"     -h, --help              Show this help message and exit.\n"
+"     --paths-from-stdin      Read PATHs to be archived from standard input,\n"
+"                             one PATH per line, after archiving PATHs\n"
+"                             specified on the command line.  (This only\n"
+"                             makes sense for the 'c' command.)\n"
+"     -n, --archive-metadata  Don't write archive metadata.  (This only makes\n"
+"                             sense while adding files to already-existing\n"
+"                             archive using shell redirection.)\n"
+"     -u, --unbuffered        Disable standard output buffering.\n"
+"     -v, --verbose           Verbose output: List PATHs added or extracted\n"
+"                             on standard error.\n\n");
 }
 
 int main(int argc, char **argv) {
