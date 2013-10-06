@@ -654,8 +654,8 @@ int skip_file_data_fseek(size_t lineno) {
 }
 
 int listfiles(size_t lineno) {
-	if (!fpath) {
-		(void) fprintf(stderr, "stdin:%zu: found an entry without a path\n", lineno);
+	if (is_invalid_metadata()) {
+		(void) fprintf(stderr, "stdin:%zu: incomplete file metadata\n", lineno);
 		return 1;
 	}
 	printline(fpath);
@@ -762,20 +762,9 @@ int extract(size_t lineno) {
 	return 0;
 }
 
-int verify(size_t lineno) {
-	if (is_invalid_metadata()) {
-		(void) fprintf(stderr, "stdin:%zu: incomplete file metadata\n", lineno);
-		return 1;
-	}
-	if (ftype == REGULARFILE) {
-		return skip_file_data(lineno);
-	}
-	return 0;
-}
-
 void help(void) {
 	(void) fprintf(stdout,
-"Usage: ptar [-h] [OPTION ...] c|x|t|v [PATH ...]\n\n"
+"Usage: ptar [-h] [OPTION ...] c|x|t [PATH ...]\n\n"
 
 "     Manipulate plain text archives that are similar to traditional tar(1)\n"
 "     files but are more human-readable.\n\n"
@@ -791,17 +780,14 @@ void help(void) {
 "               the current working directory.\n\n"
 
 "     t         List the PATHs stored in the archive from standard input.\n"
-"               This does not verify that file metadata is complete or\n"
-"               valid: It only prints Path values.\n\n"
-
-"     v         Check whether the archive from standard input conforms\n"
-"               to the plain text archive standard (including recognized\n"
-"               extensions) and can be extracted via 'x' without parse\n"
-"               errors.  This does not check your file system's state\n"
-"               and thus cannot guarantee that extraction would succeed.\n"
-"               This also does not verify file or metadata contents unless\n"
-"               the archive contains a recognized extension that permits\n"
-"               such verification.  Unrecognized extensions are treated\n"
+"               This also checks whether the archive conforms to the plain\n"
+"               text archive standard (including recognized extensions) and\n"
+"               can be extracted via 'x' without parse errors.  This does\n"
+"               not check your file system's state and thus cannot\n"
+"               guarantee that extraction would succeed.  This also does\n"
+"               not verify file or metadata contents unless the archive\n"
+"               contains a recognized extension that permits such\n"
+"               verification.  Unrecognized extensions are treated\n"
 "               as errors.\n\n"
 
 "Options:\n\n"
@@ -918,11 +904,8 @@ int main(int argc, char **argv) {
 	case 't':
 		error = scan_archive(listfiles);
 		break;
-	case 'v':
-		error = scan_archive(verify);
-		break;
 	default:
-		(void) fprintf(stderr, "error: unrecognized command: %s (must be one of 'c', 'x', 't', or 'v')\n", argv[n]);
+		(void) fprintf(stderr, "error: unrecognized command: %s (must be one of 'c', 'x', or 't')\n", argv[n]);
 		error = 1;
 	}
 	clear_metadata();
