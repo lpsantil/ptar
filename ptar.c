@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <ftw.h>
 #include <grp.h>
 #include <pwd.h>
@@ -50,9 +51,13 @@ int skip_file_data_fseek(size_t lineno);
 int (*skip_file_data)(size_t) = skip_file_data_fseek;
 
 /* file selection (for 'x' command) */
+typedef struct requested_file {
+	char *path_pattern;
+	char found;
+} requested_file_t;
 int extract_if_requested_file(const char *file_path);
 int (*should_extract_file)(const char *);
-char **requested_files;
+requested_file_t *requested_files;
 size_t num_requested_files;
 size_t requested_files_cap;
 
@@ -703,12 +708,15 @@ int listfiles(size_t lineno) {
 
 int extract_if_requested_file(const char *file_path) {
 	size_t n;
+	int result;
 
 	for (n = 0; n < num_requested_files; n++) {
-		if (strcmp(file_path, requested_files[n]) == 0) {
-			free(requested_files[n]);
-			requested_files[n] = requested_files[--num_requested_files];
+		if ((result = fnmatch(requested_files[n].path_pattern, file_path, 0)) == 0) {
+			requested_files[n].found = 1;
 			return 1;
+		} else if (result == FNM_NOSYS) {
+			(void) fprintf(stderr, "error: fnmatch(3) is not implemented on your system; cannot extract individual files\n");
+			exit(EXIT_FAILURE);
 		}
 	}
 	return 0;
@@ -808,7 +816,8 @@ int add_requested_path(const char *file_path) {
 		(void) fprintf(stderr, "out of memory\n");
 		exit(EXIT_FAILURE);
 	}
-	requested_files[num_requested_files++] = safe_strdup(file_path);
+	requested_files[num_requested_files].path_pattern = safe_strdup(file_path);
+	requested_files[num_requested_files++].found = 0;
 	return 0;
 }
 
@@ -856,7 +865,10 @@ void help(void) {
 "               the current working directory.  The files whose PATHs are\n"
 "               listed on the command line will be extracted from the\n"
 "               archive.  If no PATHs are specified, then all contents\n"
-"               will be extracted.\n\n"
+"               will be extracted.  PATHs are treated as shell wildcard\n"
+"               patterns: '*.jpg' 'pictures/2013-*.jpg' and other such\n"
+"               patterns will match archived paths the same way these\n"
+"               patterns match paths in interactive shells.\n\n"
 
 "     t         List the PATHs stored in the archive from standard input.\n"
 "               This also checks whether the archive conforms to the plain\n"
@@ -991,12 +1003,12 @@ int main(int argc, char **argv) {
 		error = 1;
 	}
 	clear_metadata();
-	if (num_requested_files != 0) {
-		error = 1;
-		for (index = 0; index < num_requested_files; index++) {
-			(void) fprintf(stderr, "error: no such file in archive: %s\n", requested_files[index]);
-			free(requested_files[index]);
+	for (index = 0; index < num_requested_files; index++) {
+		if (!requested_files[index].found) {
+			(void) fprintf(stderr, "error: no archived files matching this pattern: %s\n", requested_files[index].path_pattern);
+			error = 1;
 		}
+		free(requested_files[index].path_pattern);
 	}
 	free(requested_files);
 	return error ? EXIT_FAILURE : EXIT_SUCCESS;
