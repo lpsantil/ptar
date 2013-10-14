@@ -30,6 +30,10 @@
 #define	WRITE_BLOCKSIZE	32768
 #endif	/* WRITE_BLOCKSIZE */
 
+#ifndef   REQUESTED_FILES_GROWTH
+#define   REQUESTED_FILES_GROWTH   8
+#endif    /* REQUESTED_FILES_GROWTH */
+
 static char linkpath[8192], verbose;
 static long openmax;
 
@@ -44,6 +48,13 @@ static ino_t stdoutino;
 int skip_file_data_fread(size_t lineno);
 int skip_file_data_fseek(size_t lineno);
 int (*skip_file_data)(size_t) = skip_file_data_fseek;
+
+/* file selection (for 'x' command) */
+int extract_if_requested_file(const char *file_path);
+int (*should_extract_file)(const char *);
+char **requested_files;
+size_t num_requested_files;
+size_t requested_files_cap;
 
 /* file entry metadata */
 static char *fpath;
@@ -613,6 +624,7 @@ int scan_archive(int (*onentry)(size_t)) {
 		(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents\n", lineno);
 		return 1;
 	}
+	free(line);
 	return 0;
 }
 
@@ -665,6 +677,19 @@ int listfiles(size_t lineno) {
 	return 0;
 }
 
+int extract_if_requested_file(const char *file_path) {
+	size_t n;
+
+	for (n = 0; n < num_requested_files; n++) {
+		if (strcmp(file_path, requested_files[n]) == 0) {
+			free(requested_files[n]);
+			requested_files[n] = requested_files[--num_requested_files];
+			return 1;
+		}
+	}
+	return 0;
+}
+
 int extract(size_t lineno) {
 	char buffer[WRITE_BLOCKSIZE];
 	FILE *fp;
@@ -678,88 +703,127 @@ int extract(size_t lineno) {
 		(void) fprintf(stderr, "stdin:%zu: incomplete file metadata\n", lineno);
 		return 1;
 	}
-	if (verbose) {
-		if (fprintf(stderr, "%s\n", fpath) < 0) {
-			perror("stderr");
-			return 1;
-		}
-	}
-	fp = NULL;
-	if (ftype != DIRECTORY && unlink(fpath) != 0 && errno != ENOENT) {
-		perror(fpath);
-		return 1;
-	}
-	switch (ftype) {
-	case REGULARFILE:
-		result = 0;
-		if ((fp = fopen(fpath, "w")) == NULL) {
-			result = 1;
-		}
-		break;
-	case DIRECTORY:
-		if ((result = mkdir(fpath, fmode)) != 0 && errno == EEXIST) {
-			if (lstat(fpath, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-				result = chmod(fpath, fmode);
+	if (should_extract_file == NULL || should_extract_file(fpath)) {
+		if (verbose) {
+			if (fprintf(stderr, "%s\n", fpath) < 0) {
+				perror("stderr");
+				return 1;
 			}
 		}
-		break;
-	case SYMLINK:
-		result = symlink(flinktarget, fpath);
-		break;
-	case CHARDEVICE:
-		result = mknod(fpath, S_IFCHR | fmode, makedev(fmajor, fminor));
-		break;
-	case BLOCKDEVICE:
-		result = mknod(fpath, S_IFBLK | fmode, makedev(fmajor, fminor));
-		break;
-	case FIFO:
-		result = mkfifo(fpath, fmode);
-		break;
-	case SOCKET:
-		result = mknod(fpath, S_IFSOCK | fmode, makedev(fmajor, fminor));
-		break;
-	default:
-		abort();
-		break;
-	}
-	if (result) {
-		perror(fpath);
-		return 1;
-	}
-	if (fp) {
-		for (numleft = fsize; numleft; ) {
-			numread = fread(buffer, 1, numleft < sizeof (buffer) ? numleft : sizeof (buffer), stdin);
-			numleft -= numread;
-			if (ferror(stdin)) {
-				(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
-				return 1;
-			} else if (feof(stdin) && numleft > 0) {
-				(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents (bad file size?)\n", lineno);
-				return 1;
-			} else if (fwrite(buffer, 1, numread, fp) != numread) {
+		fp = NULL;
+		if (ftype != DIRECTORY && unlink(fpath) != 0 && errno != ENOENT) {
+			perror(fpath);
+			return 1;
+		}
+		switch (ftype) {
+		case REGULARFILE:
+			result = 0;
+			if ((fp = fopen(fpath, "w")) == NULL) {
+				result = 1;
+			}
+			break;
+		case DIRECTORY:
+			if ((result = mkdir(fpath, fmode)) != 0 && errno == EEXIST) {
+				if (lstat(fpath, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+					result = chmod(fpath, fmode);
+				}
+			}
+			break;
+		case SYMLINK:
+			result = symlink(flinktarget, fpath);
+			break;
+		case CHARDEVICE:
+			result = mknod(fpath, S_IFCHR | fmode, makedev(fmajor, fminor));
+			break;
+		case BLOCKDEVICE:
+			result = mknod(fpath, S_IFBLK | fmode, makedev(fmajor, fminor));
+			break;
+		case FIFO:
+			result = mkfifo(fpath, fmode);
+			break;
+		case SOCKET:
+			result = mknod(fpath, S_IFSOCK | fmode, makedev(fmajor, fminor));
+			break;
+		default:
+			abort();
+			break;
+		}
+		if (result) {
+			perror(fpath);
+			return 1;
+		}
+		if (fp) {
+			for (numleft = fsize; numleft; ) {
+				numread = fread(buffer, 1, numleft < sizeof (buffer) ? numleft : sizeof (buffer), stdin);
+				numleft -= numread;
+				if (ferror(stdin)) {
+					(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
+					return 1;
+				} else if (feof(stdin) && numleft > 0) {
+					(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents (bad file size?)\n", lineno);
+					return 1;
+				} else if (fwrite(buffer, 1, numread, fp) != numread) {
+					perror(fpath);
+					return 1;
+				}
+			}
+			(void) fclose(fp);
+			if (chmod(fpath, fmode) != 0) {
 				perror(fpath);
 				return 1;
 			}
 		}
-		(void) fclose(fp);
-		if (chmod(fpath, fmode) != 0) {
+		times[0].tv_sec = 0;
+		times[0].tv_nsec = UTIME_OMIT;
+		times[1].tv_sec = fmtime;
+		times[1].tv_nsec = 0;
+		if (utimensat(AT_FDCWD, fpath, times, 0) != 0) {
 			perror(fpath);
 			return 1;
 		}
-	}
-	times[0].tv_sec = 0;
-	times[0].tv_nsec = UTIME_OMIT;
-	times[1].tv_sec = fmtime;
-	times[1].tv_nsec = 0;
-	if (utimensat(AT_FDCWD, fpath, times, 0) != 0) {
-		perror(fpath);
-		return 1;
-	}
-	if (lchown(fpath, fuid, fgid) != 0) {
-		perror(fpath);
-		return 1;
+		if (lchown(fpath, fuid, fgid) != 0) {
+			perror(fpath);
+			return 1;
+		}
+	} else if (ftype == REGULARFILE) {
+		return skip_file_data(lineno);
 	}
 	return 0;
+}
+
+int add_requested_path(const char *file_path) {
+	if (num_requested_files == requested_files_cap && (requested_files = realloc(requested_files, (requested_files_cap += REQUESTED_FILES_GROWTH) * sizeof (*requested_files))) == NULL) {
+		(void) fprintf(stderr, "out of memory\n");
+		exit(EXIT_FAILURE);
+	}
+	requested_files[num_requested_files++] = safe_strdup(file_path);
+	return 0;
+}
+
+int process_stdin_lines(int (*process_line)(const char *)) {
+	int error;
+	char *line;
+	size_t linecap;
+	ssize_t numread;
+
+	error = 0;
+	line = NULL;
+	while (!error && (numread = getline(&line, &linecap, stdin)) != -1) {
+		if (numread > 0) {
+			if (line[numread - 1] == '\n') {
+				line[numread - 1] = '\0';
+			}
+			if (line[0] != '\0') {
+				error = process_line(line);
+			}
+		}
+	}
+	if (ferror(stdin)) {
+		perror("stdin");
+		error = 1;
+	}
+	free(line);
+	return error;
 }
 
 void help(void) {
@@ -777,7 +841,10 @@ void help(void) {
 
 "     x         Extract the contents of the archive from standard input\n"
 "               and write the contents to the file system relative to\n"
-"               the current working directory.\n\n"
+"               the current working directory.  The files whose PATHs are\n"
+"               listed on the command line will be extracted from the\n"
+"               archive.  If no PATHs are specified, then all contents\n"
+"               will be extracted.\n\n"
 
 "     t         List the PATHs stored in the archive from standard input.\n"
 "               This also checks whether the archive conforms to the plain\n"
@@ -818,12 +885,11 @@ void help(void) {
 
 int main(int argc, char **argv) {
 	int error, n;
-	char *line, noarchivemetadata, pathsfromstdin;
-	size_t linecap;
-	ssize_t numread;
+	char noarchivemetadata, pathsfromstdin;
 	time_t now;
 	struct tm *nowtm;
 	struct stat sb;
+	size_t index;
 
 	pathsfromstdin = noarchivemetadata = 0;
 	for (n = 1; n < argc; n++) {
@@ -883,23 +949,20 @@ int main(int argc, char **argv) {
 		for (n++; !error && n < argc; n++) {
 			error = archive_file(argv[n]);
 		}
-		if (pathsfromstdin) {
-			while (!error && (numread = getline(&line, &linecap, stdin)) != -1) {
-				if (numread > 0) {
-					if (line[numread - 1] == '\n') {
-						line[numread - 1] = '\0';
-					}
-					archive_file(line);
-				}
-			}
-			if (ferror(stdin)) {
-				perror("stdin");
-				error = 1;
-			}
+		if (!error && pathsfromstdin) {
+			error = process_stdin_lines(archive_file);
 		}
 		break;
 	case 'x':
-		error = scan_archive(extract);
+		if (++n < argc) {
+			do {
+				error = add_requested_path(argv[n]);
+			} while (!error && ++n < argc);
+			should_extract_file = extract_if_requested_file;
+		}
+		if (!error) {
+			error = scan_archive(extract);
+		}
 		break;
 	case 't':
 		error = scan_archive(listfiles);
@@ -909,6 +972,14 @@ int main(int argc, char **argv) {
 		error = 1;
 	}
 	clear_metadata();
+	if (num_requested_files != 0) {
+		error = 1;
+		for (index = 0; index < num_requested_files; index++) {
+			(void) fprintf(stderr, "error: no such file in archive: %s\n", requested_files[index]);
+			free(requested_files[index]);
+		}
+	}
+	free(requested_files);
 	return error ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
