@@ -34,7 +34,7 @@
 #define   REQUESTED_FILES_GROWTH   8
 #endif    /* REQUESTED_FILES_GROWTH */
 
-static char linkpath[8192], verbose;
+static char linkpath[8192], verbose, extracttostdout;
 static long openmax;
 
 /* file type IDs */
@@ -665,6 +665,30 @@ int skip_file_data_fseek(size_t lineno) {
 	}
 }
 
+int extract_file_contents(size_t lineno, FILE *fp) {
+	char buffer[WRITE_BLOCKSIZE];
+	size_t numleft, numread;
+
+	for (numleft = fsize; numleft; ) {
+		numread = fread(buffer, 1, numleft < sizeof (buffer) ? numleft : sizeof (buffer), stdin);
+		numleft -= numread;
+		if (ferror(stdin)) {
+			(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
+			return 1;
+		} else if (feof(stdin) && numleft > 0) {
+			(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents (bad file size?)\n", lineno);
+			return 1;
+		} else if (fwrite(buffer, 1, numread, fp) != numread) {
+			perror(fpath);
+			return 1;
+		}
+	}
+	if (fp != stdout) {
+		(void) fclose(fp);
+	}
+	return 0;
+}
+
 int listfiles(size_t lineno) {
 	if (is_invalid_metadata()) {
 		(void) fprintf(stderr, "stdin:%zu: incomplete file metadata\n", lineno);
@@ -691,10 +715,7 @@ int extract_if_requested_file(const char *file_path) {
 }
 
 int extract(size_t lineno) {
-	char buffer[WRITE_BLOCKSIZE];
 	FILE *fp;
-	size_t numleft;
-	size_t numread;
 	struct stat sb;
 	struct timespec times[2];
 	int result;
@@ -709,6 +730,9 @@ int extract(size_t lineno) {
 				perror("stderr");
 				return 1;
 			}
+		}
+		if (extracttostdout) {
+			return ftype == REGULARFILE ? extract_file_contents(lineno, stdout) : 0;
 		}
 		fp = NULL;
 		if (ftype != DIRECTORY && unlink(fpath) != 0 && errno != ENOENT) {
@@ -753,21 +777,9 @@ int extract(size_t lineno) {
 			return 1;
 		}
 		if (fp) {
-			for (numleft = fsize; numleft; ) {
-				numread = fread(buffer, 1, numleft < sizeof (buffer) ? numleft : sizeof (buffer), stdin);
-				numleft -= numread;
-				if (ferror(stdin)) {
-					(void) fprintf(stderr, "stdin:%zu: error while reading: %s\n", lineno, strerror(errno));
-					return 1;
-				} else if (feof(stdin) && numleft > 0) {
-					(void) fprintf(stderr, "stdin:%zu: end-of-file reached while reading file contents (bad file size?)\n", lineno);
-					return 1;
-				} else if (fwrite(buffer, 1, numread, fp) != numread) {
-					perror(fpath);
-					return 1;
-				}
+			if (extract_file_contents(lineno, fp) != 0) {
+				return 1;
 			}
-			(void) fclose(fp);
 			if (chmod(fpath, fmode) != 0) {
 				perror(fpath);
 				return 1;
@@ -873,6 +885,11 @@ void help(void) {
 "                                  compliance.  This creates a way to add\n"
 "                                  files to already-existing archives\n"
 "                                  through shell redirection.)\n"
+"     -o, --extract-to-stdout      Override default 'x' command behavior by\n"
+"                                  writing extracted regular files' contents\n"
+"                                  to standard output.  The file system is\n"
+"                                  not altered.  (This only makes sense for\n"
+"                                  the 'x' command.)\n"
 "     --paths-from-stdin           Read PATHs to be archived from standard\n"
 "                                  input, one PATH per line, after\n"
 "                                  archiving PATHs specified on the command\n"
@@ -914,6 +931,8 @@ int main(int argc, char **argv) {
 			verbose = 1;
 		} else if (strcmp(argv[n], "-n") == 0 || strcmp(argv[n], "--no-archive-metadata") == 0) {
 			noarchivemetadata = 1;
+		} else if (strcmp(argv[n], "-o") == 0 || strcmp(argv[n], "--extract-to-stdout") == 0) {
+			extracttostdout = 1;
 		} else if (n == argc) {
 			(void) fprintf(stderr, "error: no command given (specify -h for help)\n");
 			exit(EXIT_FAILURE);
