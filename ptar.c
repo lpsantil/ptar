@@ -104,11 +104,11 @@ long open_max(void) {
 }
 
 int isvalidkeychar(char c) {
-	return isalnum(c) || c == ' ' || c == '-' || c == '_';
+	return isalnum((unsigned char)c) || c == ' ' || c == '-' || c == '_';
 }
 
 int isvalidkey(const char *start) {
-	if (!isalnum(*start)) {
+	if (!isalnum((unsigned char)*start)) {
 		return 0;
 	}
 	for (start++; *start != ':' && *start != '\0'; start++) {
@@ -126,7 +126,7 @@ int haskey(const char *line) {
 void transformkey(char *start) {
 	char *next;
 	for (next = start; *start != '\0'; start++, next++) {
-		while (isspace(*next) && *next != '\0') {
+		while (isspace((unsigned char)*next) && *next != '\0') {
 			next++;
 		}
 		*start = tolower(*next);
@@ -136,12 +136,12 @@ void transformkey(char *start) {
 char *trim(char *str) {
 	size_t len;
 
-	while (isspace(*str)) {
+	while (isspace((unsigned char)*str)) {
 		str++;
 	}
 	if (*str != '\0') {
 		len = strlen(str);
-		for (len--; isspace(str[len]); len--) {
+		for (len--; isspace((unsigned char)str[len]); len--) {
 			str[len] = '\0';
 		}
 	}
