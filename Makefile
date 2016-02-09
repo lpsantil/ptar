@@ -19,7 +19,7 @@
 BINFILE ?= ptar
 
 # compilation flags
-CFLAGS ?= -D_XOPEN_SOURCE=700 -D_BSD_SOURCE -O2 -g -Wall -Werror
+CFLAGS ?= -D_XOPEN_SOURCE=700 -D_BSD_SOURCE -O2 -g -Wall
 CPPFLAGS ?=
 
 # the installation program (install(1))
