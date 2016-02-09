@@ -69,6 +69,9 @@ clean:
 install: $(BINFILE)
 	$(INSTALL_PROGRAM) $(BINFILE) $(BINDIR)/$(BINFILE)
 
+uninstall:
+	rm -f $(BINDIR)/$(BINFILE)
+
 dist: $(DISTARCHIVE)
 
 $(DISTARCHIVE): all
